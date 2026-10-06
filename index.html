@@ -1,178 +1,107 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Fantasy Valley HD</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Universal Maker</title>
 <style>
-html,body{margin:0;height:100%;overflow:hidden;background:#9ccbe2;font-family:system-ui;color:white}
-canvas{display:block}
-#hud{position:fixed;top:12px;left:12px;z-index:5;background:#102018b8;padding:10px 13px;border:1px solid #ffffff30;border-radius:12px;backdrop-filter:blur(7px);font-size:13px;line-height:1.45;box-shadow:0 5px 20px #0005}
-#title{font-weight:750;font-size:15px}
-#joy{position:fixed;left:20px;bottom:22px;width:120px;height:120px;border-radius:50%;background:#ffffff20;border:2px solid #ffffff70;z-index:5;touch-action:none}
-#stick{position:absolute;left:38px;top:38px;width:44px;height:44px;border-radius:50%;background:#ffffffb5;box-shadow:0 3px 12px #0005}
-#look{position:fixed;right:0;bottom:0;width:52%;height:72%;z-index:4;touch-action:none}
-#cross{position:fixed;left:50%;top:50%;width:5px;height:5px;border:1px solid #fff8;border-radius:50%;z-index:3;pointer-events:none}
-@media(pointer:fine){#joy,#look{display:none}}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#07100f;font-family:system-ui,sans-serif;color:#eef7f3}
+canvas{display:block}.panel{position:fixed;z-index:10;background:#07100fd9;border:1px solid #ffffff22;backdrop-filter:blur(12px);border-radius:16px;box-shadow:0 10px 40px #0008}
+#start{left:14px;top:14px;width:min(430px,calc(100% - 28px));padding:16px;box-sizing:border-box}
+h1{font-size:22px;margin:0 0 4px}.sub{opacity:.7;font-size:12px;margin-bottom:12px}
+textarea,input{box-sizing:border-box;width:100%;border:1px solid #ffffff25;background:#ffffff0c;color:white;border-radius:10px;padding:11px;margin:5px 0;font:inherit}
+textarea{height:100px;resize:vertical}button{border:0;border-radius:10px;padding:11px 14px;font-weight:700;background:#d9f3df;color:#102018;margin-top:7px}
+button.secondary{background:#ffffff16;color:white;margin-left:6px}.row{display:flex;gap:6px}.row button{flex:1}
+#status{font-size:12px;opacity:.8;margin-top:8px;min-height:18px}
+#hud{right:12px;top:12px;padding:9px 12px;font-size:12px;display:none}
+#cross{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);opacity:.4;pointer-events:none}
+#joy{position:fixed;left:22px;bottom:22px;width:110px;height:110px;border-radius:50%;background:#ffffff12;border:1px solid #ffffff25;display:none;z-index:9;touch-action:none}
+#knob{position:absolute;width:44px;height:44px;border-radius:50%;background:#ffffff55;left:33px;top:33px}
+#look{position:fixed;right:0;bottom:0;width:50%;height:70%;z-index:8;touch-action:none}
+.badge{display:inline-block;padding:2px 7px;border-radius:99px;background:#ffffff14;margin-right:4px}
 </style>
 </head>
 <body>
-<div id="hud"><div id="title">Fantasy Valley HD</div>WASD / arrows to move • click and move mouse to look<br>Phone: left stick moves • drag right side to look</div>
-<div id="cross"></div><div id="joy"><div id="stick"></div></div><div id="look"></div>
+<div id="start" class="panel">
+<h1>Universal Maker</h1><div class="sub">Describe a world. AI plans it; Universal Maker builds and remembers it.</div>
+<input id="key" type="password" autocomplete="off" placeholder="OpenAI API key (stored only in this browser)">
+<textarea id="prompt" placeholder="e.g. A misty alpine valley with pine forests, a cold lake, stone cottages, ruins and distant snowy mountains."></textarea>
+<div class="row"><button id="make">Make / remake world</button><button id="hide" class="secondary">Explore</button></div>
+<div class="row"><button id="forget" class="secondary">Forget API key</button><button id="clear" class="secondary">Clear saved world</button></div>
+<div id="status">Loading saved world…</div>
+</div>
+<div id="hud" class="panel"><span class="badge">WASD / arrows</span><span class="badge">drag to look</span><span id="chunk"></span></div>
+<div id="cross">＋</div><div id="joy"><div id="knob"></div></div><div id="look"></div>
 <script type="module">
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/+esm';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
 
-const scene=new THREE.Scene();
-scene.background=new THREE.Color(0xa8d4e7);
-scene.fog=new THREE.FogExp2(0xb5d6df,.0085);
+const $=s=>document.querySelector(s), status=$('#status'), keyEl=$('#key'), promptEl=$('#prompt');
+const DB='universal-maker-v2', STORE='kv';
+function db(){return new Promise((ok,no)=>{let r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+async function get(k){let d=await db();return new Promise((ok,no)=>{let r=d.transaction(STORE).objectStore(STORE).get(k);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+async function put(k,v){let d=await db();return new Promise((ok,no)=>{let r=d.transaction(STORE,'readwrite').objectStore(STORE).put(v,k);r.onsuccess=()=>ok();r.onerror=()=>no(r.error)})}
+async function del(k){let d=await db();return new Promise((ok,no)=>{let r=d.transaction(STORE,'readwrite').objectStore(STORE).delete(k);r.onsuccess=()=>ok();r.onerror=()=>no(r.error)})}
 
-const camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,.1,350);
-const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
-renderer.setSize(innerWidth,innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));
-renderer.shadowMap.enabled=true;
-renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-renderer.outputColorSpace=THREE.SRGBColorSpace;
-renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=1.05;
-document.body.prepend(renderer.domElement);
+let scene,camera,renderer,player,worldGroup,clock=new THREE.Clock(), yaw=0,pitch=.28, keys={}, spec, seed=12345;
+const chunks=new Map(), CHUNK=80, RADIUS=2, assetRecipes=new Map();
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+function rng(n){let x=(n>>>0)||1;return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}}
+function height(x,z){let s=seed*.001;return Math.sin(x*.018+s)*5+Math.cos(z*.021-s)*4+Math.sin((x+z)*.009)*6+(spec?.relief||1)*Math.sin(x*.004)*9}
+function defaultSpec(p=''){return {name:'Generated World',seed:hash(p||'world'),sky:'#91b8bd',fog:'#a6bdba',fogNear:45,fogFar:170,ground:'#526e43',water:'#547d87',relief:1.1,waterLevel:-5,treeDensity:.045,rockDensity:.010,buildingDensity:.0015,tree:{id:'pine-temperate-v1',kind:'pine',trunk:'#5a4332',foliage:'#244b35',height:8,crown:2.8},building:{id:'stone-cottage-v1',wall:'#77736a',roof:'#403b38'},mood:'misty'}}
 
-scene.add(new THREE.HemisphereLight(0xd9efff,0x304020,1.65));
-const sun=new THREE.DirectionalLight(0xffe5b4,3.0);
-sun.position.set(-45,65,28); sun.castShadow=true;
-sun.shadow.mapSize.set(2048,2048); sun.shadow.camera.left=-70;sun.shadow.camera.right=70;sun.shadow.camera.top=70;sun.shadow.camera.bottom=-70;
-scene.add(sun);
-
-function h(x,z){
-  const lake=Math.exp(-((x+27)**2+(z+18)**2)/700)*-3.0;
-  return Math.sin(x*.045)*2.7+Math.cos(z*.052)*2.1+Math.sin((x+z)*.021)*1.8+Math.sin(x*.12)*Math.cos(z*.09)*.45+lake;
+function init(){
+ scene=new THREE.Scene(); camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,500);
+ renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;document.body.prepend(renderer.domElement);
+ scene.add(new THREE.HemisphereLight(0xddeeff,0x273225,1.6));let sun=new THREE.DirectionalLight(0xfff2d0,2.5);sun.position.set(-45,75,35);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.left=-70;sun.shadow.camera.right=70;sun.shadow.camera.top=70;sun.shadow.camera.bottom=-70;scene.add(sun);
+ player=new THREE.Object3D();scene.add(player); worldGroup=new THREE.Group();scene.add(worldGroup);
+ addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+ addEventListener('keydown',e=>keys[e.code]=true);addEventListener('keyup',e=>keys[e.code]=false);
+ let dragging=false,lx=0,ly=0;renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;lx=e.clientX;ly=e.clientY});addEventListener('pointerup',()=>dragging=false);addEventListener('pointermove',e=>{if(!dragging)return;yaw-=(e.clientX-lx)*.004;pitch=clamp(pitch+(e.clientY-ly)*.003,-.2,1.0);lx=e.clientX;ly=e.clientY});
+ setupTouch();animate();
 }
-function rand2(a,b){let v=Math.sin(a*127.1+b*311.7)*43758.5453123;return v-Math.floor(v)}
-function texCanvas(w,h,paint){
- const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');paint(x,w,h);
- const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=renderer.capabilities.getMaxAnisotropy();return t;
+let joy={x:0,y:0};function setupTouch(){if(!matchMedia('(pointer:coarse)').matches)return;$('#joy').style.display='block';let j=$('#joy'),k=$('#knob');function mv(e){let r=j.getBoundingClientRect(),t=e.touches[0],x=t.clientX-(r.left+r.width/2),y=t.clientY-(r.top+r.height/2),m=Math.hypot(x,y)||1,q=Math.min(40,m)/m;joy={x:x*q/40,y:y*q/40};k.style.transform=`translate(${x*q}px,${y*q}px)`}j.addEventListener('touchstart',mv);j.addEventListener('touchmove',mv);j.addEventListener('touchend',()=>{joy={x:0,y:0};k.style.transform=''}) ;let look=$('#look'),last=null;look.addEventListener('touchstart',e=>last=e.touches[0]);look.addEventListener('touchmove',e=>{let t=e.touches[0];if(last){yaw-=(t.clientX-last.clientX)*.006;pitch=clamp(pitch+(t.clientY-last.clientY)*.004,-.2,1)}last=t});look.addEventListener('touchend',()=>last=null)}
+
+function mat(c,rough=.9){return new THREE.MeshStandardMaterial({color:c,roughness:rough})}
+function makeTree(recipe){let g=new THREE.Group(),h=recipe.height||8;let trunk=new THREE.Mesh(new THREE.CylinderGeometry(.28,.42,h*.58,7),mat(recipe.trunk||'#5a4332'));trunk.position.y=h*.29;trunk.castShadow=true;g.add(trunk);let fm=mat(recipe.foliage||'#254d36',.95);for(let i=0;i<3;i++){let crown=new THREE.Mesh(new THREE.ConeGeometry((recipe.crown||2.8)*(1-i*.17),h*.42,8),fm);crown.position.y=h*.52+i*h*.16;crown.castShadow=true;g.add(crown)}return g}
+function makeRock(r){let m=new THREE.Mesh(new THREE.IcosahedronGeometry(.8+r()*1.3,1),mat('#666b62'));m.scale.set(1+r(),.5+r()*.8,.8+r());m.castShadow=true;return m}
+function makeBuilding(recipe){let g=new THREE.Group(),wall=mat(recipe.wall||'#77736a'),roof=mat(recipe.roof||'#403b38');let b=new THREE.Mesh(new THREE.BoxGeometry(7,4.3,5.5),wall);b.position.y=2.15;b.castShadow=true;g.add(b);let rr=new THREE.Mesh(new THREE.ConeGeometry(5.2,3.1,4),roof);rr.rotation.y=Math.PI/4;rr.position.y=5.55;rr.scale.z=.78;rr.castShadow=true;g.add(rr);return g}
+function ensureRecipe(r){if(!r?.id)return;r=structuredClone(r);if(!assetRecipes.has(r.id)){assetRecipes.set(r.id,r);put('asset:'+r.id,r)}}
+async function loadRecipes(){let d=await db();return new Promise(ok=>{let tx=d.transaction(STORE),req=tx.objectStore(STORE).openCursor(),a=[];req.onsuccess=e=>{let c=e.target.result;if(c){if(String(c.key).startsWith('asset:')){assetRecipes.set(c.value.id,c.value);a.push(c.value.id)}c.continue()}else ok(a)}})}
+
+function buildChunk(cx,cz){
+ let id=cx+','+cz;if(chunks.has(id))return;let r=rng(hash(id+'|'+seed)),group=new THREE.Group(),N=18,geom=new THREE.PlaneGeometry(CHUNK,CHUNK,N,N);geom.rotateX(-Math.PI/2);let pos=geom.attributes.position;
+ for(let i=0;i<pos.count;i++){let x=pos.getX(i)+cx*CHUNK,z=pos.getZ(i)+cz*CHUNK;pos.setY(i,height(x,z))}
+ geom.computeVertexNormals();let terrain=new THREE.Mesh(geom,mat(spec.ground||'#526e43'));terrain.receiveShadow=true;terrain.position.set(cx*CHUNK,0,cz*CHUNK);group.add(terrain);
+ let area=CHUNK*CHUNK, tc=Math.min(95,Math.round(area*(spec.treeDensity||.03))),rc=Math.min(28,Math.round(area*(spec.rockDensity||.006))),bc=Math.min(4,Math.round(area*(spec.buildingDensity||.0004)));
+ let tr=assetRecipes.get(spec.tree?.id)||spec.tree;for(let i=0;i<tc;i++){let x=(cx+(r()-.5))*CHUNK,z=(cz+(r()-.5))*CHUNK,y=height(x,z);if(y<(spec.waterLevel||-99)+1)continue;let o=makeTree(tr);o.position.set(x,y,z);let s=.7+r()*.7;o.scale.setScalar(s);o.rotation.y=r()*6.28;group.add(o)}
+ for(let i=0;i<rc;i++){let x=(cx+(r()-.5))*CHUNK,z=(cz+(r()-.5))*CHUNK,o=makeRock(r);o.position.set(x,height(x,z),z);o.rotation.set(r(),r()*6.28,r());group.add(o)}
+ for(let i=0;i<bc;i++){let x=(cx+(r()-.5))*CHUNK,z=(cz+(r()-.5))*CHUNK,o=makeBuilding(spec.building);o.position.set(x,height(x,z),z);o.rotation.y=Math.floor(r()*4)*Math.PI/2;group.add(o)}
+ worldGroup.add(group);chunks.set(id,group);
 }
-const grassTex=texCanvas(512,512,(c,w,h)=>{
- c.fillStyle='#526f32';c.fillRect(0,0,w,h);
- for(let i=0;i<18000;i++){let x=Math.random()*w,y=Math.random()*h,l=2+Math.random()*7;
- c.strokeStyle=Math.random()>.5?'#78964b':'#3c5827';c.globalAlpha=.18+Math.random()*.35;c.beginPath();c.moveTo(x,y);c.lineTo(x+Math.random()*2-1,y-l);c.stroke()}
- c.globalAlpha=1;
-}); grassTex.repeat.set(22,22);
+function stream(){let cx=Math.round(player.position.x/CHUNK),cz=Math.round(player.position.z/CHUNK);for(let x=cx-RADIUS;x<=cx+RADIUS;x++)for(let z=cz-RADIUS;z<=cz+RADIUS;z++)buildChunk(x,z);for(let [id,g] of chunks){let [x,z]=id.split(',').map(Number);if(Math.abs(x-cx)>RADIUS+1||Math.abs(z-cz)>RADIUS+1){worldGroup.remove(g);chunks.delete(id)}}$('#chunk').textContent=` chunk ${cx},${cz} · ${chunks.size} loaded`}
 
-const size=180,seg=180,geo=new THREE.PlaneGeometry(size,size,seg,seg);geo.rotateX(-Math.PI/2);
-const pos=geo.attributes.position, cols=[];
-const low=new THREE.Color(0x47672f),mid=new THREE.Color(0x718d45),high=new THREE.Color(0x7d795f);
-for(let i=0;i<pos.count;i++){const x=pos.getX(i),z=pos.getZ(i),y=h(x,z);pos.setY(i,y);let c=mid.clone();if(y<-.5)c.lerp(low,.55);if(y>3)c.lerp(high,Math.min(.6,(y-3)/8));cols.push(c.r,c.g,c.b)}
-geo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));geo.computeVertexNormals();
-const ground=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({map:grassTex,vertexColors:true,roughness:.95}));
-ground.receiveShadow=true;scene.add(ground);
-
-// distant mountains
-const mountainMat=new THREE.MeshStandardMaterial({color:0x687369,roughness:1});
-for(let i=0;i<17;i++){let a=i/17*Math.PI*2,r=112+rand2(i,9)*30,x=Math.cos(a)*r,z=Math.sin(a)*r;
- let m=new THREE.Mesh(new THREE.ConeGeometry(10+rand2(i,2)*12,28+rand2(i,4)*30,7),mountainMat);
- m.position.set(x,-5,z);m.rotation.y=rand2(i,7)*Math.PI;m.castShadow=true;scene.add(m)}
-
-// water
-const waterMat=new THREE.MeshPhysicalMaterial({color:0x287f9c,roughness:.12,metalness:.05,transparent:true,opacity:.82,clearcoat:1,clearcoatRoughness:.12});
-const water=new THREE.Mesh(new THREE.CircleGeometry(18,96),waterMat);water.rotation.x=-Math.PI/2;water.position.set(-27,-2.1,-18);scene.add(water);
-
-// path
-const pathMat=new THREE.MeshStandardMaterial({color:0x9a825d,roughness:1});
-for(let i=0;i<38;i++){let z=28-i*1.35,x=3+Math.sin(i*.19)*3.2;let s=new THREE.Mesh(new THREE.CircleGeometry(1.4+rand2(i,2)*.7,12),pathMat);
-s.rotation.x=-Math.PI/2;s.rotation.z=rand2(i,3)*2;s.scale.y=.55;s.position.set(x,h(x,z)+.035,z);s.receiveShadow=true;scene.add(s)}
-
-// high-detail trees
-const bark=texCanvas(256,512,(c,w,h)=>{c.fillStyle='#49311f';c.fillRect(0,0,w,h);for(let i=0;i<700;i++){c.strokeStyle=i%3?'#68462c':'#2d2118';c.globalAlpha=.35;c.beginPath();let x=Math.random()*w,y=Math.random()*h;c.moveTo(x,y);c.lineTo(x+Math.random()*8-4,y+15+Math.random()*45);c.stroke()}});
-const barkMat=new THREE.MeshStandardMaterial({map:bark,roughness:1});
-const leafMats=[0x294f27,0x376b31,0x487c38,0x5c8840].map(c=>new THREE.MeshStandardMaterial({color:c,roughness:.9}));
-function tree(x,z,s=1,seed=1){
- const y=h(x,z),g=new THREE.Group();
- const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.24*s,.52*s,4.4*s,12,3),barkMat);trunk.position.y=2.2*s;trunk.castShadow=true;g.add(trunk);
- // branching silhouette
- for(let j=0;j<3;j++){let br=new THREE.Mesh(new THREE.CylinderGeometry(.07*s,.14*s,2.1*s,7),barkMat);br.position.set((j-1)*.22*s,(3+j*.28)*s,0);br.rotation.z=(j-1)*-.55;br.castShadow=true;g.add(br)}
- for(let j=0;j<7;j++){let rr=rand2(seed,j),ang=j*2.399+rr;
-   let crown=new THREE.Mesh(new THREE.IcosahedronGeometry((1.25+rr*.55)*s,2),leafMats[j%leafMats.length]);
-   crown.scale.set(1,.9+rr*.35,1);crown.position.set(Math.cos(ang)*(.65+rr*.6)*s,(4.4+j*.23+rr*.6)*s,Math.sin(ang)*(.65+rr*.6)*s);
-   crown.castShadow=true;g.add(crown)}
- g.position.set(x,y,z);g.rotation.y=rand2(seed,99)*Math.PI*2;scene.add(g);
+function applyWorld(s){
+ spec={...defaultSpec(promptEl.value),...s};seed=Number(spec.seed)||hash(JSON.stringify(spec));ensureRecipe(spec.tree);ensureRecipe(spec.building);
+ scene.background=new THREE.Color(spec.sky);scene.fog=new THREE.Fog(spec.fog||spec.sky,spec.fogNear||45,spec.fogFar||170);
+ for(let [,g] of chunks)worldGroup.remove(g);chunks.clear();
+ let old=worldGroup.getObjectByName('water');if(old)worldGroup.remove(old);let w=new THREE.Mesh(new THREE.PlaneGeometry(1200,1200),new THREE.MeshPhysicalMaterial({color:spec.water||'#547d87',roughness:.2,metalness:0,transparent:true,opacity:.72}));w.rotation.x=-Math.PI/2;w.position.y=spec.waterLevel??-5;w.name='water';worldGroup.add(w);
+ player.position.set(0,height(0,0)+1.6,0);stream();$('#hud').style.display='block';
 }
-for(let i=0;i<95;i++){let x=rand2(i,1)*154-77,z=rand2(i,2)*154-77;if(Math.hypot(x+27,z+18)>23&&Math.hypot(x-17,z-7)>13&&Math.abs(x-3-Math.sin((28-z)/1.35*.19)*3.2)>4)tree(x,z,.65+rand2(i,4)*.72,i)}
+function animate(){requestAnimationFrame(animate);let dt=Math.min(.035,clock.getDelta());if(player&&spec){let f=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0)-joy.y,r=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0)+joy.x,sp=(keys.ShiftLeft?12:7)*dt;player.position.x+=(Math.sin(yaw)*f+Math.cos(yaw)*r)*sp;player.position.z+=(Math.cos(yaw)*f-Math.sin(yaw)*r)*sp;player.position.y=height(player.position.x,player.position.z)+1.6;let dist=8,cy=player.position.y+2;camera.position.set(player.position.x-Math.sin(yaw)*dist,cy+Math.sin(pitch)*5,player.position.z-Math.cos(yaw)*dist);camera.lookAt(player.position.x,player.position.y+1,player.position.z);stream()}renderer.render(scene,camera)}
 
-// thousands of grass blades, instanced
-const bladeGeo=new THREE.ConeGeometry(.045,.8,3);bladeGeo.translate(0,.4,0);
-const bladeMat=new THREE.MeshStandardMaterial({color:0x6f963e,roughness:1});
-const blades=new THREE.InstancedMesh(bladeGeo,bladeMat,5200);const dummy=new THREE.Object3D();
-for(let i=0;i<5200;i++){let x=rand2(i,10)*160-80,z=rand2(i,11)*160-80;
- if(Math.hypot(x+27,z+18)<19){x=75;z=75}
- dummy.position.set(x,h(x,z),z);dummy.rotation.y=rand2(i,12)*6.28;let s=.45+rand2(i,13)*.85;dummy.scale.set(s,s,s);dummy.updateMatrix();blades.setMatrixAt(i,dummy.matrix)}
-blades.receiveShadow=true;scene.add(blades);
-
-// rocks
-const rockMats=[0x696b62,0x77776d,0x555a53].map(c=>new THREE.MeshStandardMaterial({color:c,roughness:.96}));
-for(let i=0;i<45;i++){let x=rand2(i,20)*150-75,z=rand2(i,21)*150-75;if(Math.hypot(x-17,z-7)<11)continue;
- let r=new THREE.Mesh(new THREE.DodecahedronGeometry(.45+rand2(i,22)*1.5,1),rockMats[i%3]);r.scale.set(1,.55+rand2(i,23)*.45,.8+rand2(i,24)*.5);r.rotation.set(rand2(i,25),rand2(i,26)*6.2,rand2(i,27)*.3);r.position.set(x,h(x,z)+.3,z);r.castShadow=true;scene.add(r)}
-
-// cottage with procedural timber/stone/plaster/shingles
-const plaster=texCanvas(512,512,(c,w,h)=>{c.fillStyle='#c8b88f';c.fillRect(0,0,w,h);for(let i=0;i<4500;i++){let v=150+Math.random()*80;c.fillStyle=`rgba(${v},${v*.92},${v*.72},.06)`;c.fillRect(Math.random()*w,Math.random()*h,2,2)}});
-const roofTex=texCanvas(512,512,(c,w,h)=>{c.fillStyle='#5a2f22';c.fillRect(0,0,w,h);for(let y=0;y<h;y+=42){for(let x=(y/42%2)*22-22;x<w;x+=44){c.fillStyle=Math.random()>.5?'#743b29':'#633020';c.fillRect(x+1,y+1,42,38);c.strokeStyle='#321c17';c.strokeRect(x,y,44,42)}}});roofTex.repeat.set(2,2);
-const woodMat=new THREE.MeshStandardMaterial({map:bark,color:0x9a744b,roughness:.9});
-const wallMat=new THREE.MeshStandardMaterial({map:plaster,roughness:.95});
-const roofMat=new THREE.MeshStandardMaterial({map:roofTex,roughness:.9});
-const stoneMat=new THREE.MeshStandardMaterial({color:0x6f7168,roughness:1});
-function beam(q,x,y,z,sx,sy,sz){let m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),woodMat);m.position.set(x,y,z);m.castShadow=true;q.add(m)}
-function cottage(x,z){
- const y=h(x,z),q=new THREE.Group();
- const base=new THREE.Mesh(new THREE.BoxGeometry(8,1,6.4),stoneMat);base.position.y=.5;base.castShadow=true;q.add(base);
- const b=new THREE.Mesh(new THREE.BoxGeometry(7.6,4.3,6),wallMat);b.position.y=3;b.castShadow=true;b.receiveShadow=true;q.add(b);
- // exposed timber frame on front
- beam(q,-3.35,3,3.06,.24,4.1,.18);beam(q,3.35,3,3.06,.24,4.1,.18);beam(q,0,3,3.06,.22,4.1,.18);beam(q,0,4.55,3.06,6.9,.2,.18);
- for(let xx of [-2.1,2.1]){let frame=new THREE.Mesh(new THREE.BoxGeometry(1.45,1.65,.16),woodMat);frame.position.set(xx,3.05,3.08);q.add(frame);let glass=new THREE.Mesh(new THREE.PlaneGeometry(1.12,1.3),new THREE.MeshPhysicalMaterial({color:0x79a9bd,roughness:.12,metalness:.1}));glass.position.set(xx,3.05,3.18);q.add(glass);beam(q,xx,3.05,3.28,.07,1.3,.05);beam(q,xx,3.05,3.28,1.12,.07,.05)}
- const door=new THREE.Mesh(new THREE.BoxGeometry(1.45,2.65,.18),woodMat);door.position.set(0,1.82,3.12);q.add(door);
- const shape=new THREE.Shape();shape.moveTo(-4.05,0);shape.lineTo(0,3.0);shape.lineTo(4.05,0);shape.closePath();
- const rg=new THREE.ExtrudeGeometry(shape,{depth:6.45,bevelEnabled:false,steps:1});rg.translate(0,0,-3.225);
- const roof=new THREE.Mesh(rg,roofMat);roof.position.y=5.15;roof.castShadow=true;q.add(roof);
- const chimney=new THREE.Mesh(new THREE.BoxGeometry(.8,2,.8),stoneMat);chimney.position.set(2.2,7.25,-.8);chimney.castShadow=true;q.add(chimney);
- q.position.set(x,y,z);q.rotation.y=-.38;scene.add(q);
+function extractText(j){if(j.output_text)return j.output_text;let a=[];for(let o of j.output||[])for(let c of o.content||[])if(c.type==='output_text'&&c.text)a.push(c.text);return a.join('\n')}
+async function aiPlan(prompt,key){
+ let existing=[...assetRecipes.values()].slice(0,30);
+ let instructions=`You are the world planner for Universal Maker, a walkable 3D world generator. Return ONLY valid JSON, no markdown. Design a visually coherent world from the user's prompt. Reuse an existing asset recipe if it fits; otherwise create a new recipe with a stable descriptive id. Keep densities mobile-friendly. JSON keys: name, seed(integer), sky(hex), fog(hex), fogNear(35-80), fogFar(110-220), ground(hex), water(hex), waterLevel(-12 to 2), relief(0.3-2), treeDensity(0-0.012), rockDensity(0-0.004), buildingDensity(0-0.0005), mood, tree:{id,kind,trunk,foliage,height(4-16),crown(1.5-5)}, building:{id,wall,roof}. Existing reusable recipes: ${JSON.stringify(existing)}. The engine currently synthesizes procedural geometry from these recipes; make the recipes fit the requested world.`;
+ let res=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model:'gpt-5.6-luna',store:false,reasoning:{effort:'low'},instructions,input:prompt,max_output_tokens:1800})});
+ let j=await res.json();if(!res.ok)throw Error(j.error?.message||`API ${res.status}`);let t=extractText(j).trim().replace(/^```json\s*|```$/g,'');return JSON.parse(t)
 }
-cottage(17,7);
 
-// flowers
-const flowerColors=[0xd8c6ff,0xffd56b,0xf1a3b7,0xe9e7dc];
-for(let i=0;i<260;i++){let x=rand2(i,40)*100-50,z=rand2(i,41)*100-50;if(Math.hypot(x+27,z+18)<19)continue;let stem=new THREE.Mesh(new THREE.CylinderGeometry(.012,.018,.28,4),new THREE.MeshStandardMaterial({color:0x3e672d}));stem.position.set(x,h(x,z)+.14,z);let bloom=new THREE.Mesh(new THREE.SphereGeometry(.07,6,4),new THREE.MeshStandardMaterial({color:flowerColors[i%4]}));bloom.position.set(x,h(x,z)+.3,z);scene.add(stem,bloom)}
+$('#make').onclick=async()=>{let p=promptEl.value.trim(),k=keyEl.value.trim();if(!p)return status.textContent='Describe the world first.';if(k)await put('apiKey',k);await put('prompt',p);status.textContent='Planning world… existing assets will be reused where suitable.';let s;try{if(!k)throw Error('No API key entered');s=await aiPlan(p,k);status.textContent='AI plan received. Building nearby chunks…'}catch(e){s=defaultSpec(p);s.seed=hash(p);status.textContent='AI planning unavailable ('+e.message+'). Built a local fallback world instead.'}applyWorld(s);await put('worldSpec',s);await put('worldPrompt',p);setTimeout(()=>{$('#start').style.display='none'},800)};
+$('#hide').onclick=()=>$('#start').style.display='none';
+$('#forget').onclick=async()=>{await del('apiKey');keyEl.value='';status.textContent='Saved API key removed from this browser.'};
+$('#clear').onclick=async()=>{await del('worldSpec');await del('worldPrompt');promptEl.value='';status.textContent='Saved world removed. Shared asset recipes were kept for reuse.'};
 
-// player
-const player=new THREE.Group();
-const cloth=new THREE.MeshStandardMaterial({color:0x354b58,roughness:.85}), leather=new THREE.MeshStandardMaterial({color:0x513827,roughness:.9}), skin=new THREE.MeshStandardMaterial({color:0xc99470});
-let torso=new THREE.Mesh(new THREE.CapsuleGeometry(.38,.9,6,12),cloth);torso.position.y=1.25;player.add(torso);
-let head=new THREE.Mesh(new THREE.SphereGeometry(.32,16,12),skin);head.position.y=2.15;player.add(head);
-let cape=new THREE.Mesh(new THREE.ConeGeometry(.62,1.45,10,1,true),new THREE.MeshStandardMaterial({color:0x563d65,side:THREE.DoubleSide,roughness:1}));cape.position.set(0,1.35,-.18);cape.rotation.x=.08;player.add(cape);
-for(let sx of [-1,1]){let leg=new THREE.Mesh(new THREE.CylinderGeometry(.12,.14,.8,8),leather);leg.position.set(.18*sx,.42,0);player.add(leg)}
-player.traverse(o=>{if(o.isMesh)o.castShadow=true});player.position.set(0,h(0,22),22);scene.add(player);
-
-let yaw=0,pitch=-.22,keys={},joyX=0,joyY=0;
-addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
-renderer.domElement.addEventListener('pointerdown',()=>{if(matchMedia('(pointer:fine)').matches)renderer.domElement.requestPointerLock?.()});
-addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer.domElement){yaw-=e.movementX*.0024;pitch=Math.max(-.85,Math.min(.4,pitch-e.movementY*.0018))}});
-const joy=document.querySelector('#joy'),stick=document.querySelector('#stick');
-function jmove(e){const r=joy.getBoundingClientRect(),x=e.clientX-(r.left+r.width/2),y=e.clientY-(r.top+r.height/2),m=Math.min(42,Math.hypot(x,y)),a=Math.atan2(y,x);joyX=Math.cos(a)*m/42;joyY=Math.sin(a)*m/42;stick.style.transform=`translate(${joyX*38}px,${joyY*38}px)`}
-joy.addEventListener('pointerdown',e=>{joy.setPointerCapture(e.pointerId);jmove(e)});joy.addEventListener('pointermove',e=>{if(joy.hasPointerCapture(e.pointerId))jmove(e)});joy.addEventListener('pointerup',()=>{joyX=joyY=0;stick.style.transform=''});
-let lx=0,ly=0,looking=false;const look=document.querySelector('#look');
-look.addEventListener('pointerdown',e=>{looking=true;lx=e.clientX;ly=e.clientY;look.setPointerCapture(e.pointerId)});
-look.addEventListener('pointermove',e=>{if(!looking)return;yaw-=(e.clientX-lx)*.007;pitch=Math.max(-.85,Math.min(.4,pitch-(e.clientY-ly)*.005));lx=e.clientX;ly=e.clientY});
-look.addEventListener('pointerup',()=>looking=false);
-
-const clock=new THREE.Clock();let t=0;
-function loop(){
- requestAnimationFrame(loop);const dt=Math.min(.033,clock.getDelta());t+=dt;
- let f=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)-joyY,r=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0)+joyX,l=Math.hypot(f,r);
- if(l>1){f/=l;r/=l}const speed=(keys.shift?9:6.5),dx=(Math.sin(yaw)*f+Math.cos(yaw)*r)*speed*dt,dz=(Math.cos(yaw)*f-Math.sin(yaw)*r)*speed*dt;
- player.position.x=THREE.MathUtils.clamp(player.position.x+dx,-86,86);player.position.z=THREE.MathUtils.clamp(player.position.z+dz,-86,86);player.position.y=h(player.position.x,player.position.z);
- if(Math.abs(f)+Math.abs(r)>.05){player.rotation.y=yaw;player.position.y+=Math.abs(Math.sin(t*8))*.035}
- const dist=7.3,cp=Math.cos(pitch);camera.position.set(player.position.x-Math.sin(yaw)*cp*dist,player.position.y+3.0+Math.sin(-pitch)*dist*.55,player.position.z-Math.cos(yaw)*cp*dist);
- camera.lookAt(player.position.x,player.position.y+1.45,player.position.z);renderer.render(scene,camera)
-}
-loop();
-addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
-</script>
-</body></html>
+init();
+(async()=>{await loadRecipes();let k=await get('apiKey'),p=await get('worldPrompt')||await get('prompt'),s=await get('worldSpec');if(k)keyEl.value=k;if(p)promptEl.value=p;if(s){applyWorld(s);status.textContent=`Restored "${s.name||'saved world'}". ${assetRecipes.size} reusable asset recipe(s) cached.`}else status.textContent=`Ready. ${assetRecipes.size} reusable asset recipe(s) cached.`})().catch(e=>status.textContent='Ready.');
+</script></body></html>
